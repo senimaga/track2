@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Mi Tracker de Hábitos</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Pantalla de hábitos -->
+  <div id="habits-screen">
+    <h1>📝 Mis Hábitos</h1>
+    <div id="add-task-container">
+      <input type="text" id="new-task" placeholder="Nuevo hábito">
+      <button id="add-btn">Añadir</button>
+    </div>
+    <ul id="task-list"></ul>
+  </div>
+
+  <!-- Pantalla del calendario -->
+  <div id="calendar-screen" style="display:none;">
+    <h2 id="calendar-title"></h2>
+    <h3 id="month-name">Febrero 2026</h3>
+
+    <div id="week-days">
+      <div>L</div>
+      <div>M</div>
+      <div>X</div>
+      <div>J</div>
+      <div>V</div>
+      <div>S</div>
+      <div>D</div>
+    </div>
+
+    <div id="calendar"></div>
+    <button id="back-btn">← Volver a hábitos</button>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
