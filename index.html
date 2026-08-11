@@ -2,11 +2,11 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mi Tracker de Hábitos</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Pantalla de hábitos -->
   <div id="habits-screen">
     <h1>📝 Mis Hábitos</h1>
     <div id="add-task-container">
@@ -16,10 +16,16 @@
     <ul id="task-list"></ul>
   </div>
 
-  <!-- Pantalla del calendario -->
   <div id="calendar-screen" style="display:none;">
     <h2 id="calendar-title"></h2>
-    <h3 id="month-name">Febrero 2026</h3>
+
+    <div id="month-navigation">
+      <button id="prev-month" class="month-btn" aria-label="Mes anterior">‹</button>
+      <h3 id="month-name"></h3>
+      <button id="next-month" class="month-btn" aria-label="Mes siguiente">›</button>
+    </div>
+
+    <button id="today-btn">Ir a este mes</button>
 
     <div id="week-days">
       <div>L</div>
