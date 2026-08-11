@@ -1,7 +1,51 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  onSnapshot
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCXSkAdrsXF3pzZUgp8O0YTgCfZqhD3Saw",
+  authDomain: "habit-tracker-ines.firebaseapp.com",
+  projectId: "habit-tracker-ines",
+  storageBucket: "habit-tracker-ines.firebasestorage.app",
+  messagingSenderId: "203337575827",
+  appId: "1:203337575827:web:3fa2e3f84245643c060c66"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
 const colorClasses = ["white", "green", "red"];
+const STORAGE_KEY = "habitTrackerData";
 let tasks = [];
 let currentTaskIndex = null;
 let currentDate = new Date();
+let currentUser = null;
+let unsubscribeData = null;
+let isApplyingRemoteData = false;
+
+const authScreen = document.getElementById("auth-screen");
+const appShell = document.getElementById("app-shell");
+const authEmail = document.getElementById("auth-email");
+const authPassword = document.getElementById("auth-password");
+const loginBtn = document.getElementById("login-btn");
+const signupBtn = document.getElementById("signup-btn");
+const logoutBtn = document.getElementById("logout-btn");
+const authMessage = document.getElementById("auth-message");
+const userEmail = document.getElementById("user-email");
+const syncStatus = document.getElementById("sync-status");
 
 const habitsScreen = document.getElementById("habits-screen");
 const calendarScreen = document.getElementById("calendar-screen");
@@ -16,36 +60,156 @@ const prevMonthBtn = document.getElementById("prev-month");
 const nextMonthBtn = document.getElementById("next-month");
 const todayBtn = document.getElementById("today-btn");
 
-const STORAGE_KEY = "habitTrackerData";
 const monthFormatter = new Intl.DateTimeFormat("es-ES", {
   month: "long",
   year: "numeric"
 });
 
-function loadData() {
-  const data = localStorage.getItem(STORAGE_KEY);
-  if (data) {
-    tasks = JSON.parse(data);
-  } else {
-    tasks = [
-      { name: "Tomarse pastilla", days: {} },
-      { name: "Lavarse dientes", days: {} },
-      { name: "Hacer ejercicio", days: {} },
-    ];
+function getDefaultTasks() {
+  return [
+    { name: "Tomarse pastilla", days: {} },
+    { name: "Lavarse dientes", days: {} },
+    { name: "Hacer ejercicio", days: {} }
+  ];
+}
+
+function loadLocalTasks() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : getDefaultTasks();
+  } catch {
+    return getDefaultTasks();
   }
 }
 
-function saveData() {
+function saveLocalTasks() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
 }
 
+function userDocRef(uid) {
+  return doc(db, "users", uid);
+}
+
+async function saveData() {
+  saveLocalTasks();
+  renderTasks();
+
+  if (!currentUser || isApplyingRemoteData) return;
+
+  syncStatus.textContent = "☁️ Guardando…";
+  try {
+    await setDoc(userDocRef(currentUser.uid), {
+      tasks,
+      updatedAt: Date.now()
+    }, { merge: true });
+    syncStatus.textContent = "☁️ Sincronizado";
+  } catch (error) {
+    console.error(error);
+    syncStatus.textContent = "⚠️ Sin sincronizar";
+  }
+}
+
+async function initializeUserData(user) {
+  const ref = userDocRef(user.uid);
+  const snapshot = await getDoc(ref);
+
+  if (!snapshot.exists() || !Array.isArray(snapshot.data().tasks)) {
+    tasks = loadLocalTasks();
+    await setDoc(ref, { tasks, updatedAt: Date.now() }, { merge: true });
+  } else {
+    tasks = snapshot.data().tasks;
+    saveLocalTasks();
+  }
+
+  renderTasks();
+
+  if (unsubscribeData) unsubscribeData();
+  unsubscribeData = onSnapshot(ref, (liveSnapshot) => {
+    const data = liveSnapshot.data();
+    if (!data || !Array.isArray(data.tasks)) return;
+
+    isApplyingRemoteData = true;
+    tasks = data.tasks;
+    saveLocalTasks();
+    renderTasks();
+    if (currentTaskIndex !== null && tasks[currentTaskIndex]) {
+      calendarTitle.textContent = tasks[currentTaskIndex].name;
+      renderCalendar();
+    }
+    syncStatus.textContent = "☁️ Sincronizado";
+    isApplyingRemoteData = false;
+  }, (error) => {
+    console.error(error);
+    syncStatus.textContent = "⚠️ Error de sincronización";
+  });
+}
+
+function showAuthError(error) {
+  const code = error?.code || "";
+  const messages = {
+    "auth/invalid-credential": "Correo o contraseña incorrectos.",
+    "auth/email-already-in-use": "Ya existe una cuenta con ese correo.",
+    "auth/weak-password": "La contraseña debe tener al menos 6 caracteres.",
+    "auth/invalid-email": "El correo no es válido.",
+    "auth/operation-not-allowed": "Activa Email/Password en Firebase Authentication.",
+    "permission-denied": "Revisa las reglas de seguridad de Firestore."
+  };
+  authMessage.textContent = messages[code] || "Ha ocurrido un error. Revisa Firebase y vuelve a intentarlo.";
+}
+
+loginBtn.addEventListener("click", async () => {
+  authMessage.textContent = "";
+  try {
+    await signInWithEmailAndPassword(auth, authEmail.value.trim(), authPassword.value);
+  } catch (error) {
+    showAuthError(error);
+  }
+});
+
+signupBtn.addEventListener("click", async () => {
+  authMessage.textContent = "";
+  try {
+    await createUserWithEmailAndPassword(auth, authEmail.value.trim(), authPassword.value);
+  } catch (error) {
+    showAuthError(error);
+  }
+});
+
+logoutBtn.addEventListener("click", async () => {
+  await signOut(auth);
+});
+
+onAuthStateChanged(auth, async (user) => {
+  currentUser = user;
+
+  if (!user) {
+    if (unsubscribeData) {
+      unsubscribeData();
+      unsubscribeData = null;
+    }
+    authScreen.style.display = "block";
+    appShell.style.display = "none";
+    return;
+  }
+
+  authScreen.style.display = "none";
+  appShell.style.display = "block";
+  userEmail.textContent = user.email || "";
+  syncStatus.textContent = "☁️ Conectando…";
+
+  try {
+    await initializeUserData(user);
+  } catch (error) {
+    console.error(error);
+    syncStatus.textContent = "⚠️ Revisa Firestore";
+  }
+});
+
 function moveTask(fromIndex, toIndex) {
   if (toIndex < 0 || toIndex >= tasks.length) return;
-
   const [task] = tasks.splice(fromIndex, 1);
   tasks.splice(toIndex, 0, task);
   saveData();
-  renderTasks();
 }
 
 function renderTasks() {
@@ -60,21 +224,16 @@ function renderTasks() {
     const moveUpBtn = document.createElement("button");
     moveUpBtn.textContent = "▲";
     moveUpBtn.classList.add("move-btn");
-    moveUpBtn.title = "Subir hábito";
-    moveUpBtn.setAttribute("aria-label", `Subir ${task.name}`);
     moveUpBtn.disabled = index === 0;
     moveUpBtn.addEventListener("click", () => moveTask(index, index - 1));
 
     const moveDownBtn = document.createElement("button");
     moveDownBtn.textContent = "▼";
     moveDownBtn.classList.add("move-btn");
-    moveDownBtn.title = "Bajar hábito";
-    moveDownBtn.setAttribute("aria-label", `Bajar ${task.name}`);
     moveDownBtn.disabled = index === tasks.length - 1;
     moveDownBtn.addEventListener("click", () => moveTask(index, index + 1));
 
-    moveControls.appendChild(moveUpBtn);
-    moveControls.appendChild(moveDownBtn);
+    moveControls.append(moveUpBtn, moveDownBtn);
 
     const btn = document.createElement("button");
     btn.classList.add("task-btn");
@@ -89,7 +248,6 @@ function renderTasks() {
       if (newName && newName.trim()) {
         task.name = newName.trim();
         saveData();
-        renderTasks();
       }
     });
 
@@ -100,14 +258,10 @@ function renderTasks() {
       if (confirm(`¿Eliminar hábito "${task.name}"?`)) {
         tasks.splice(index, 1);
         saveData();
-        renderTasks();
       }
     });
 
-    li.appendChild(moveControls);
-    li.appendChild(btn);
-    li.appendChild(editBtn);
-    li.appendChild(deleteBtn);
+    li.append(moveControls, btn, editBtn, deleteBtn);
     taskList.appendChild(li);
   });
 }
@@ -118,12 +272,7 @@ function dateKey(year, month, day) {
 
 function migrateLegacyFebruaryData(task) {
   if (!task.days || task._legacyMigrated) return;
-
   const legacyEntries = Object.entries(task.days).filter(([key]) => /^\d{1,2}$/.test(key));
-  if (legacyEntries.length === 0) {
-    task._legacyMigrated = true;
-    return;
-  }
 
   legacyEntries.forEach(([day, color]) => {
     const key = dateKey(2026, 1, Number(day));
@@ -146,12 +295,11 @@ function showCalendar(taskIndex) {
   habitsScreen.style.display = "none";
   calendarScreen.style.display = "block";
   calendarTitle.textContent = task.name;
-
   renderCalendar();
 }
 
 function renderCalendar() {
-  if (currentTaskIndex === null) return;
+  if (currentTaskIndex === null || !tasks[currentTaskIndex]) return;
 
   const task = tasks[currentTaskIndex];
   const year = currentDate.getFullYear();
@@ -162,11 +310,8 @@ function renderCalendar() {
   calendar.innerHTML = "";
 
   const firstDay = (new Date(year, month, 1).getDay() + 6) % 7;
-
   for (let i = 0; i < firstDay; i++) {
-    const emptyDiv = document.createElement("div");
-    emptyDiv.classList.add("empty-day");
-    calendar.appendChild(emptyDiv);
+    calendar.appendChild(document.createElement("div"));
   }
 
   const today = new Date();
@@ -180,21 +325,15 @@ function renderCalendar() {
     dayDiv.classList.add(color);
     dayDiv.textContent = day;
 
-    const isToday =
-      day === today.getDate() &&
-      month === today.getMonth() &&
-      year === today.getFullYear();
-
-    if (isToday) dayDiv.classList.add("today");
+    if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+      dayDiv.classList.add("today");
+    }
 
     dayDiv.addEventListener("click", () => {
       const currentColor = colorClasses.find(c => dayDiv.classList.contains(c)) || "white";
-      const currentIndex = colorClasses.indexOf(currentColor);
-      const nextColor = colorClasses[(currentIndex + 1) % colorClasses.length];
-
+      const nextColor = colorClasses[(colorClasses.indexOf(currentColor) + 1) % colorClasses.length];
       dayDiv.classList.remove(...colorClasses);
       dayDiv.classList.add(nextColor);
-
       task.days[key] = nextColor;
       saveData();
     });
@@ -233,12 +372,7 @@ newTaskInput.addEventListener("keydown", (event) => {
 function addTask() {
   const name = newTaskInput.value.trim();
   if (!name) return;
-
   tasks.push({ name, days: {} });
   newTaskInput.value = "";
   saveData();
-  renderTasks();
 }
-
-loadData();
-renderTasks();
