@@ -39,11 +39,42 @@ function saveData() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
 }
 
+function moveTask(fromIndex, toIndex) {
+  if (toIndex < 0 || toIndex >= tasks.length) return;
+
+  const [task] = tasks.splice(fromIndex, 1);
+  tasks.splice(toIndex, 0, task);
+  saveData();
+  renderTasks();
+}
+
 function renderTasks() {
   taskList.innerHTML = "";
 
   tasks.forEach((task, index) => {
     const li = document.createElement("li");
+
+    const moveControls = document.createElement("div");
+    moveControls.classList.add("move-controls");
+
+    const moveUpBtn = document.createElement("button");
+    moveUpBtn.textContent = "▲";
+    moveUpBtn.classList.add("move-btn");
+    moveUpBtn.title = "Subir hábito";
+    moveUpBtn.setAttribute("aria-label", `Subir ${task.name}`);
+    moveUpBtn.disabled = index === 0;
+    moveUpBtn.addEventListener("click", () => moveTask(index, index - 1));
+
+    const moveDownBtn = document.createElement("button");
+    moveDownBtn.textContent = "▼";
+    moveDownBtn.classList.add("move-btn");
+    moveDownBtn.title = "Bajar hábito";
+    moveDownBtn.setAttribute("aria-label", `Bajar ${task.name}`);
+    moveDownBtn.disabled = index === tasks.length - 1;
+    moveDownBtn.addEventListener("click", () => moveTask(index, index + 1));
+
+    moveControls.appendChild(moveUpBtn);
+    moveControls.appendChild(moveDownBtn);
 
     const btn = document.createElement("button");
     btn.classList.add("task-btn");
@@ -73,6 +104,7 @@ function renderTasks() {
       }
     });
 
+    li.appendChild(moveControls);
     li.appendChild(btn);
     li.appendChild(editBtn);
     li.appendChild(deleteBtn);
@@ -129,7 +161,6 @@ function renderCalendar() {
   monthName.textContent = monthFormatter.format(currentDate).replace(/^./, c => c.toUpperCase());
   calendar.innerHTML = "";
 
-  // JS: domingo=0. Lo convertimos a lunes=0 ... domingo=6.
   const firstDay = (new Date(year, month, 1).getDay() + 6) % 7;
 
   for (let i = 0; i < firstDay; i++) {
