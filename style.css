@@ -49,6 +49,26 @@ button {
 ul { list-style: none; padding: 0; }
 li { margin: 10px 0; display: flex; justify-content: center; align-items: center; gap: 5px; }
 
+.move-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.move-btn {
+  width: 28px;
+  height: 19px;
+  padding: 0;
+  border-radius: 6px;
+  font-size: 10px;
+  line-height: 1;
+  background-color: #e7ddd4;
+  color: #666;
+}
+
+.move-btn:hover:not(:disabled) { background-color: #d7c9bd; }
+.move-btn:disabled { opacity: 0.28; cursor: default; }
+
 .task-btn {
   font-size: 18px;
   padding: 10px 15px;
@@ -166,6 +186,10 @@ li { margin: 10px 0; display: flex; justify-content: center; align-items: center
   body { padding: 14px 8px; }
   h1 { font-size: 27px; }
   h2 { font-size: 23px; }
+
+  li { gap: 4px; }
+  .task-btn { font-size: 16px; padding: 10px 11px; }
+  .edit-btn, .delete-btn { width: 38px; height: 38px; }
 
   #week-days,
   #calendar {
