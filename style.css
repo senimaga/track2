@@ -153,6 +153,8 @@ li { margin: 10px 0; display: flex; justify-content: center; align-items: center
 }
 
 .task-btn {
+  width: 260px;
+  min-width: 260px;
   font-size: 18px;
   padding: 10px 15px;
   border-radius: 10px;
@@ -161,6 +163,9 @@ li { margin: 10px 0; display: flex; justify-content: center; align-items: center
   color: #333;
   cursor: pointer;
   transition: background 0.3s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .task-btn:hover { background-color: #f0f0f0; }
 
@@ -299,9 +304,7 @@ li { margin: 10px 0; display: flex; justify-content: center; align-items: center
   }
 
   .task-btn {
-    max-width: 190px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    width: 190px;
+    min-width: 190px;
   }
 }
