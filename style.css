@@ -1,19 +1,26 @@
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap');
 
+* { box-sizing: border-box; }
+
 body {
   font-family: 'Montserrat', sans-serif;
   text-align: center;
   padding: 20px;
+  margin: 0;
   background-color: #fdf6f0;
   color: #333;
 }
 
 h1 { font-size: 32px; margin-bottom: 20px; font-weight: 600; }
-h2 { font-size: 26px; margin-bottom: 5px; }
-h3 { font-size: 20px; margin-bottom: 10px; color: #555; }
+h2 { font-size: 26px; margin-bottom: 10px; }
+h3 { font-size: 20px; margin: 0; color: #555; }
 
 #add-task-container {
   margin-bottom: 20px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 input#new-task {
@@ -32,7 +39,6 @@ button {
   transition: 0.2s;
 }
 
-/* Botón añadir */
 #add-btn {
   padding: 10px 20px;
   background-color: #8fc1a9;
@@ -40,7 +46,6 @@ button {
 }
 #add-btn:hover { background-color: #74a68b; }
 
-/* Lista de hábitos */
 ul { list-style: none; padding: 0; }
 li { margin: 10px 0; display: flex; justify-content: center; align-items: center; gap: 5px; }
 
@@ -56,7 +61,6 @@ li { margin: 10px 0; display: flex; justify-content: center; align-items: center
 }
 .task-btn:hover { background-color: #f0f0f0; }
 
-/* Botones editar y eliminar uniformes */
 .edit-btn, .delete-btn {
   width: 40px;
   height: 40px;
@@ -75,10 +79,39 @@ li { margin: 10px 0; display: flex; justify-content: center; align-items: center
 .delete-btn { background-color: #f28b82; }
 .delete-btn:hover { background-color: #d56c6c; }
 
-/* Días de la semana alineados con los círculos */
+#month-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 8px 0 6px;
+}
+
+.month-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  font-size: 28px;
+  line-height: 1;
+  background: white;
+  color: #555;
+  border: 1px solid #ddd;
+}
+.month-btn:hover { background-color: #f0f0f0; }
+
+#today-btn {
+  padding: 7px 12px;
+  margin-bottom: 10px;
+  background: transparent;
+  color: #668f7c;
+  border: 1px solid #8fc1a9;
+}
+#today-btn:hover { background-color: #edf7f2; }
+
 #week-days {
   display: grid;
   grid-template-columns: repeat(7, 50px);
+  gap: 10px;
   justify-content: center;
   margin-bottom: 10px;
 }
@@ -86,16 +119,15 @@ li { margin: 10px 0; display: flex; justify-content: center; align-items: center
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 50px;
+  height: 35px;
   font-weight: 600;
 }
 
-/* Calendario con circulitos */
 #calendar {
   display: grid;
   grid-template-columns: repeat(7, 50px);
   grid-auto-rows: 50px;
-  grid-gap: 10px;
+  gap: 10px;
   justify-content: center;
   margin-bottom: 20px;
 }
@@ -111,20 +143,42 @@ li { margin: 10px 0; display: flex; justify-content: center; align-items: center
   cursor: pointer;
   border: 2px solid #ccc;
   user-select: none;
-  box-shadow: 0px 2px 5px rgba(0,0,0,0.1);
-  transition: background-color 0.2s;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  transition: transform 0.15s, background-color 0.2s;
 }
+.day:hover { transform: scale(1.06); }
 
 .green { background-color: #b2f2bb; }
 .red { background-color: #f5b2b2; }
 .white { background-color: white; }
+.today { outline: 3px solid #8fc1a9; outline-offset: 2px; }
 
-/* Botón volver */
 #back-btn {
-  margin-top: 20px;
+  margin-top: 8px;
   padding: 10px 20px;
   background-color: #8fc1a9;
   color: white;
   border-radius: 10px;
 }
 #back-btn:hover { background-color: #74a68b; }
+
+@media (max-width: 480px) {
+  body { padding: 14px 8px; }
+  h1 { font-size: 27px; }
+  h2 { font-size: 23px; }
+
+  #week-days,
+  #calendar {
+    grid-template-columns: repeat(7, 40px);
+    gap: 6px;
+  }
+
+  #calendar { grid-auto-rows: 40px; }
+  #week-days div { height: 30px; }
+
+  .day {
+    width: 40px;
+    height: 40px;
+    font-size: 14px;
+  }
+}
