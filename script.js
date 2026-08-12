@@ -65,6 +65,8 @@ const addBtn = document.getElementById("add-btn");
 const newTaskInput = document.getElementById("new-task");
 const calendar = document.getElementById("calendar");
 const calendarTitle = document.getElementById("calendar-title");
+const habitNote = document.getElementById("habit-note");
+const saveNoteBtn = document.getElementById("save-note-btn");
 const monthName = document.getElementById("month-name");
 const backBtn = document.getElementById("back-btn");
 const prevMonthBtn = document.getElementById("prev-month");
@@ -88,8 +90,6 @@ function makeId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// Organiza los hábitos existentes sin tocar sus nombres ni borrar ningún día.
-// Una vez creada, la categoría inicial es una categoría normal y puede renombrarse libremente.
 function prepareCategoryStructure() {
   if (!Array.isArray(tasks)) tasks = [];
   if (!Array.isArray(categories)) categories = [];
@@ -202,7 +202,6 @@ async function initializeUserData(user) {
     const data = snapshot.data();
     tasks = data.tasks;
 
-    // Si Firebase todavía no tiene categorías, conserva las locales en vez de resetearlas.
     if (Array.isArray(data.categories)) {
       categories = data.categories;
     } else {
@@ -246,7 +245,6 @@ async function initializeUserData(user) {
       isApplyingRemoteData = true;
       tasks = data.tasks;
 
-      // No borres/reescribas las categorías locales si el documento remoto aún no tiene ese campo.
       if (Array.isArray(data.categories)) {
         categories = data.categories;
       }
@@ -348,6 +346,7 @@ function renderCurrentView() {
   if (calendarScreen.style.display !== "none" && currentTaskIndex !== null) {
     if (tasks[currentTaskIndex]) {
       calendarTitle.textContent = tasks[currentTaskIndex].name;
+      habitNote.value = tasks[currentTaskIndex].note || "";
       renderCalendar();
     }
     return;
@@ -559,6 +558,7 @@ function showCalendar(taskIndex) {
   hideAllScreens();
   calendarScreen.style.display = "block";
   calendarTitle.textContent = task.name;
+  habitNote.value = task.note || "";
   renderCalendar();
 }
 
@@ -614,6 +614,12 @@ function renderCalendar() {
   }
 }
 
+async function saveCurrentNote() {
+  if (currentTaskIndex === null || !tasks[currentTaskIndex]) return;
+  tasks[currentTaskIndex].note = habitNote.value.trim();
+  await saveData();
+}
+
 function addCategory() {
   const name = newCategoryInput.value.trim();
   if (!name) return;
@@ -627,10 +633,15 @@ function addTask() {
   const name = newTaskInput.value.trim();
   if (!name || !currentCategoryId) return;
 
-  tasks.push({ name, days: {}, categoryId: currentCategoryId });
+  tasks.push({ name, days: {}, categoryId: currentCategoryId, note: "" });
   newTaskInput.value = "";
   saveData();
 }
+
+saveNoteBtn.addEventListener("click", saveCurrentNote);
+habitNote.addEventListener("keydown", event => {
+  if (event.key === "Enter") saveCurrentNote();
+});
 
 addCategoryBtn.addEventListener("click", addCategory);
 newCategoryInput.addEventListener("keydown", event => {
