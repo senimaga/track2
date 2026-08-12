@@ -5,13 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#fdf6f0">
   <title>Mi Tracker de Hábitos</title>
-  <link rel="stylesheet" href="style.css?v=20260812-1">
+  <link rel="stylesheet" href="style.css?v=20260812-2">
 </head>
 <body>
   <div id="auth-screen" class="auth-card">
     <h1>📝 Mis Hábitos</h1>
     <p class="auth-subtitle">Inicia sesión para sincronizar tus hábitos en todos tus dispositivos.</p>
-
     <div class="auth-form">
       <input type="email" id="auth-email" placeholder="Correo electrónico" autocomplete="username">
       <input type="password" id="auth-password" placeholder="Contraseña" autocomplete="current-password">
@@ -30,20 +29,23 @@
       <button id="logout-btn">Cerrar sesión</button>
     </div>
 
-    <div id="habits-screen">
-      <h1>📝 Mis Hábitos</h1>
-
-      <div id="category-toolbar">
-        <button id="add-category-btn">+ Categoría</button>
+    <div id="categories-screen">
+      <h1>📂 Mis categorías</h1>
+      <div id="add-category-container">
+        <input type="text" id="new-category" placeholder="Nueva categoría">
+        <button id="add-category-btn">Añadir categoría</button>
       </div>
+      <div id="category-list"></div>
+    </div>
 
+    <div id="category-screen" style="display:none;">
+      <button id="back-categories-btn" class="back-link">← Categorías</button>
+      <h1 id="category-screen-title"></h1>
       <div id="add-task-container">
         <input type="text" id="new-task" placeholder="Nuevo hábito">
-        <select id="new-task-category" aria-label="Categoría del nuevo hábito"></select>
         <button id="add-btn">Añadir</button>
       </div>
-
-      <div id="categories-container"></div>
+      <ul id="task-list"></ul>
     </div>
 
     <div id="calendar-screen" style="display:none;">
@@ -57,20 +59,14 @@
       <button id="today-btn">Ir a este mes</button>
 
       <div id="week-days">
-        <div>L</div>
-        <div>M</div>
-        <div>X</div>
-        <div>J</div>
-        <div>V</div>
-        <div>S</div>
-        <div>D</div>
+        <div>L</div><div>M</div><div>X</div><div>J</div><div>V</div><div>S</div><div>D</div>
       </div>
 
       <div id="calendar"></div>
-      <button id="back-btn">← Volver a hábitos</button>
+      <button id="back-btn">← Volver a la categoría</button>
     </div>
   </div>
 
-  <script type="module" src="script.js?v=20260812-1"></script>
+  <script type="module" src="script.js?v=20260812-2"></script>
 </body>
 </html>
