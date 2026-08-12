@@ -28,6 +28,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const STORAGE_KEY = "habitTrackerData";
+const DEFAULT_CATEGORY_ID = "legacy_all";
 const colorClasses = ["white", "green", "red"];
 
 let tasks = [];
@@ -38,6 +39,7 @@ let currentDate = new Date();
 let currentUser = null;
 let unsubscribeData = null;
 let isApplyingRemoteData = false;
+let cloudReady = false;
 
 const authScreen = document.getElementById("auth-screen");
 const appShell = document.getElementById("app-shell");
@@ -86,39 +88,42 @@ function makeId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// Añade únicamente metadatos de categorías. No modifica nombres ni borra días registrados.
+// Organiza los hábitos existentes sin tocar sus nombres ni borrar ningún día.
 function prepareCategoryStructure() {
   if (!Array.isArray(tasks)) tasks = [];
   if (!Array.isArray(categories)) categories = [];
 
-  let legacyCategory = categories.find(c => c && (c.id === "legacy_all" || c.id === "uncategorized"));
-
-  if (!legacyCategory) {
-    legacyCategory = { id: "legacy_all", name: "Mis hábitos" };
-    categories.unshift(legacyCategory);
-  } else {
-    const oldId = legacyCategory.id;
-    legacyCategory.id = "legacy_all";
-    legacyCategory.name = "Mis hábitos";
-
-    if (oldId !== "legacy_all") {
-      tasks.forEach(task => {
-        if (task.categoryId === oldId) task.categoryId = "legacy_all";
-      });
-    }
+  // Compatibilidad con la primera prueba de categorías.
+  const oldUncategorized = categories.find(category => category?.id === "uncategorized");
+  if (oldUncategorized) {
+    oldUncategorized.id = DEFAULT_CATEGORY_ID;
+    oldUncategorized.name = "Mis hábitos";
+    tasks.forEach(task => {
+      if (task?.categoryId === "uncategorized") task.categoryId = DEFAULT_CATEGORY_ID;
+    });
   }
 
-  tasks.forEach(task => {
-    if (!task.days || typeof task.days !== "object") task.days = {};
-    const categoryExists = categories.some(c => c && c.id === task.categoryId);
-    if (!task.categoryId || !categoryExists) task.categoryId = "legacy_all";
-  });
+  let defaultCategory = categories.find(category => category?.id === DEFAULT_CATEGORY_ID);
+  if (!defaultCategory) {
+    defaultCategory = { id: DEFAULT_CATEGORY_ID, name: "Mis hábitos" };
+    categories.unshift(defaultCategory);
+  }
 
   const seen = new Set();
   categories = categories.filter(category => {
     if (!category || !category.id || seen.has(category.id)) return false;
     seen.add(category.id);
     return true;
+  });
+
+  tasks.forEach(task => {
+    if (!task || typeof task !== "object") return;
+    if (!task.days || typeof task.days !== "object") task.days = {};
+
+    const validCategory = categories.some(category => category.id === task.categoryId);
+    if (!task.categoryId || !validCategory) {
+      task.categoryId = DEFAULT_CATEGORY_ID;
+    }
   });
 }
 
@@ -128,11 +133,13 @@ function loadLocalData() {
     if (!raw) return { tasks: getDefaultTasks(), categories: [] };
 
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return { tasks: parsed, categories: [] };
+    if (Array.isArray(parsed)) {
+      return { tasks: parsed, categories: [] };
+    }
 
     return {
-      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : getDefaultTasks(),
-      categories: Array.isArray(parsed.categories) ? parsed.categories : []
+      tasks: Array.isArray(parsed?.tasks) ? parsed.tasks : getDefaultTasks(),
+      categories: Array.isArray(parsed?.categories) ? parsed.categories : []
     };
   } catch {
     return { tasks: getDefaultTasks(), categories: [] };
@@ -152,13 +159,18 @@ async function saveData() {
   saveLocalData();
   renderCurrentView();
 
-  if (!currentUser || isApplyingRemoteData) return;
+  if (!currentUser || !cloudReady || isApplyingRemoteData) return;
 
   syncStatus.textContent = "☁️ Guardando…";
+
   try {
     await setDoc(
       userDocRef(currentUser.uid),
-      { tasks, categories, updatedAt: Date.now() },
+      {
+        tasks,
+        categories,
+        updatedAt: Date.now()
+      },
       { merge: true }
     );
     syncStatus.textContent = "☁️ Sincronizado";
@@ -170,47 +182,60 @@ async function saveData() {
 
 async function initializeUserData(user) {
   const ref = userDocRef(user.uid);
-  let snapshot;
+  cloudReady = false;
 
+  let snapshot;
   try {
     snapshot = await getDoc(ref);
   } catch (error) {
     console.error("Error leyendo Firestore:", error);
+
+    // Se muestra la copia local, pero se bloquean escrituras en nube para no sustituir datos remotos a ciegas.
     const local = loadLocalData();
     tasks = local.tasks;
     categories = local.categories;
     prepareCategoryStructure();
     saveLocalData();
     showCategories();
-    syncStatus.textContent = `⚠️ No se pudo leer Firebase (${error.code || "error"})`;
+    syncStatus.textContent = `⚠️ Firebase no disponible (${error.code || "error"})`;
     return;
   }
 
-  if (snapshot.exists() && Array.isArray(snapshot.data().tasks)) {
+  if (snapshot.exists() && Array.isArray(snapshot.data()?.tasks)) {
+    // IMPORTANTE: la copia de Firebase es la fuente de verdad.
     const data = snapshot.data();
-
-    // La nube manda: conserva exactamente los hábitos y sus historiales ya registrados.
     tasks = data.tasks;
     categories = Array.isArray(data.categories) ? data.categories : [];
     prepareCategoryStructure();
     saveLocalData();
+    cloudReady = true;
     showCategories();
+    syncStatus.textContent = "☁️ Datos cargados";
   } else {
+    // Solo se usa localStorage cuando la cuenta todavía no tiene un array tasks en Firebase.
     const local = loadLocalData();
     tasks = local.tasks;
     categories = local.categories;
     prepareCategoryStructure();
     saveLocalData();
-    showCategories();
 
-    // Solo crea el documento si la cuenta todavía no tenía datos en Firebase.
     try {
-      await setDoc(ref, { tasks, categories, updatedAt: Date.now() }, { merge: true });
+      await setDoc(
+        ref,
+        { tasks, categories, updatedAt: Date.now() },
+        { merge: true }
+      );
+      cloudReady = true;
+      syncStatus.textContent = "☁️ Sincronizado";
     } catch (error) {
       console.error("Error creando datos iniciales:", error);
       syncStatus.textContent = `⚠️ Sin sincronizar (${error.code || "error"})`;
     }
+
+    showCategories();
   }
+
+  if (!cloudReady) return;
 
   if (unsubscribeData) unsubscribeData();
   unsubscribeData = onSnapshot(
@@ -230,6 +255,7 @@ async function initializeUserData(user) {
     },
     error => {
       console.error("Error escuchando Firestore:", error);
+      cloudReady = false;
       syncStatus.textContent = `⚠️ Sincronización bloqueada (${error.code || "error"})`;
     }
   );
@@ -273,10 +299,12 @@ onAuthStateChanged(auth, async user => {
   currentUser = user;
 
   if (!user) {
+    cloudReady = false;
     if (unsubscribeData) {
       unsubscribeData();
       unsubscribeData = null;
     }
+
     authScreen.style.display = "block";
     appShell.style.display = "none";
     return;
@@ -338,7 +366,8 @@ function renderCategories() {
 
     const main = document.createElement("button");
     main.classList.add("category-main-btn");
-    const count = tasks.filter(task => task.categoryId === category.id).length;
+
+    const count = tasks.filter(task => task?.categoryId === category.id).length;
     main.innerHTML = `<span>${escapeHtml(category.name)}</span><small>${count} ${count === 1 ? "hábito" : "hábitos"}</small>`;
     main.addEventListener("click", () => showCategory(category.id));
 
@@ -360,14 +389,15 @@ function renderCategories() {
     del.title = "Eliminar categoría";
     del.disabled = categories.length === 1;
     del.addEventListener("click", () => {
-      const categoryTasks = tasks.filter(task => task.categoryId === category.id);
+      const categoryTasks = tasks.filter(task => task?.categoryId === category.id);
+
       if (categoryTasks.length > 0) {
         alert("Esta categoría contiene hábitos. Muévelos primero a otra categoría para que no se pierda nada.");
         return;
       }
 
       if (confirm(`¿Eliminar la categoría "${category.name}"?`)) {
-        categories = categories.filter(c => c.id !== category.id);
+        categories = categories.filter(item => item.id !== category.id);
         saveData();
       }
     });
@@ -378,7 +408,8 @@ function renderCategories() {
 }
 
 function renderCategory() {
-  const category = categories.find(c => c.id === currentCategoryId);
+  const category = categories.find(item => item.id === currentCategoryId);
+
   if (!category) {
     showCategories();
     return;
@@ -389,7 +420,7 @@ function renderCategory() {
 
   const items = tasks
     .map((task, index) => ({ task, index }))
-    .filter(item => item.task.categoryId === currentCategoryId);
+    .filter(item => item.task?.categoryId === currentCategoryId);
 
   if (items.length === 0) {
     const empty = document.createElement("p");
@@ -413,6 +444,8 @@ function renderCategory() {
     down.classList.add("move-btn");
     up.disabled = position === 0;
     down.disabled = position === items.length - 1;
+    up.title = "Subir hábito";
+    down.title = "Bajar hábito";
     up.addEventListener("click", () => swapTasks(item.index, items[position - 1]?.index));
     down.addEventListener("click", () => swapTasks(item.index, items[position + 1]?.index));
     moveControls.append(up, down);
@@ -431,6 +464,7 @@ function renderCategory() {
     const edit = document.createElement("button");
     edit.classList.add("edit-btn");
     edit.textContent = "✏️";
+    edit.title = "Editar hábito";
     edit.addEventListener("click", () => {
       const value = prompt("Editar hábito:", item.task.name);
       if (value && value.trim()) {
@@ -442,6 +476,7 @@ function renderCategory() {
     const del = document.createElement("button");
     del.classList.add("delete-btn");
     del.textContent = "🗑️";
+    del.title = "Eliminar hábito";
     del.addEventListener("click", () => {
       if (confirm(`¿Eliminar hábito "${item.task.name}"? También se eliminará su historial.`)) {
         tasks.splice(item.index, 1);
@@ -454,24 +489,33 @@ function renderCategory() {
   });
 }
 
-function swapTasks(a, b) {
-  if (a === undefined || b === undefined) return;
-  [tasks[a], tasks[b]] = [tasks[b], tasks[a]];
+function swapTasks(firstIndex, secondIndex) {
+  if (firstIndex === undefined || secondIndex === undefined) return;
+  [tasks[firstIndex], tasks[secondIndex]] = [tasks[secondIndex], tasks[firstIndex]];
   saveData();
 }
 
 function moveTaskToAnotherCategory(task) {
-  if (categories.length < 2) {
+  const otherCategories = categories.filter(category => category.id !== task.categoryId);
+
+  if (otherCategories.length === 0) {
     alert("Crea otra categoría primero.");
     return;
   }
 
-  const options = categories.map((category, i) => `${i + 1}. ${category.name}`).join("\n");
-  const answer = prompt(`Mover "${task.name}" a:\n\n${options}\n\nEscribe el número:`);
-  const index = Number(answer) - 1;
+  const options = otherCategories
+    .map((category, index) => `${index + 1}. ${category.name}`)
+    .join("\n");
 
-  if (Number.isInteger(index) && categories[index]) {
-    task.categoryId = categories[index].id;
+  const answer = prompt(
+    `Mover "${task.name}" a:\n\n${options}\n\nEscribe el número:`
+  );
+
+  if (answer === null) return;
+
+  const selectedIndex = Number(answer) - 1;
+  if (Number.isInteger(selectedIndex) && otherCategories[selectedIndex]) {
+    task.categoryId = otherCategories[selectedIndex].id;
     saveData();
   }
 }
@@ -489,9 +533,9 @@ function dateKey(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-// Copia el formato antiguo de febrero al nuevo sin borrar las claves antiguas.
+// Conserva el formato antiguo y copia a claves YYYY-MM-DD solo si hace falta.
 function migrateLegacyFebruaryData(task) {
-  if (!task.days || task._legacyMigrated) return;
+  if (!task?.days || task._legacyMigrated) return;
 
   const legacyEntries = Object.entries(task.days).filter(([key]) => /^\d{1,2}$/.test(key));
   legacyEntries.forEach(([day, color]) => {
@@ -508,6 +552,8 @@ function showCalendar(taskIndex) {
   currentDate.setDate(1);
 
   const task = tasks[taskIndex];
+  if (!task) return;
+
   migrateLegacyFebruaryData(task);
 
   hideAllScreens();
@@ -524,7 +570,10 @@ function renderCalendar() {
   const month = currentDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  monthName.textContent = monthFormatter.format(currentDate).replace(/^./, c => c.toUpperCase());
+  monthName.textContent = monthFormatter
+    .format(currentDate)
+    .replace(/^./, character => character.toUpperCase());
+
   calendar.innerHTML = "";
 
   const firstDay = (new Date(year, month, 1).getDay() + 6) % 7;
@@ -543,12 +592,16 @@ function renderCalendar() {
     dayDiv.classList.add(color);
     dayDiv.textContent = day;
 
-    if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+    if (
+      day === today.getDate() &&
+      month === today.getMonth() &&
+      year === today.getFullYear()
+    ) {
       dayDiv.classList.add("today");
     }
 
     dayDiv.addEventListener("click", () => {
-      const currentColor = colorClasses.find(c => dayDiv.classList.contains(c)) || "white";
+      const currentColor = colorClasses.find(className => dayDiv.classList.contains(className)) || "white";
       const nextColor = colorClasses[(colorClasses.indexOf(currentColor) + 1) % colorClasses.length];
 
       dayDiv.classList.remove(...colorClasses);
@@ -565,7 +618,11 @@ function addCategory() {
   const name = newCategoryInput.value.trim();
   if (!name) return;
 
-  categories.push({ id: makeId("cat"), name });
+  categories.push({
+    id: makeId("cat"),
+    name
+  });
+
   newCategoryInput.value = "";
   saveData();
 }
@@ -574,7 +631,12 @@ function addTask() {
   const name = newTaskInput.value.trim();
   if (!name || !currentCategoryId) return;
 
-  tasks.push({ name, days: {}, categoryId: currentCategoryId });
+  tasks.push({
+    name,
+    days: {},
+    categoryId: currentCategoryId
+  });
+
   newTaskInput.value = "";
   saveData();
 }
