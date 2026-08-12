@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#fdf6f0">
   <title>Mi Tracker de Hábitos</title>
-  <link rel="stylesheet" href="style.css?v=20260812-4">
+  <link rel="stylesheet" href="style.css?v=20260812-5">
 </head>
 <body>
   <div id="auth-screen" class="auth-card">
@@ -57,12 +57,9 @@
 
       <h3 id="calendar-title"></h3>
 
-      <div id="habit-note-container">
-        <label for="habit-note">📝 Nota</label>
-        <div class="habit-note-row">
-          <input type="text" id="habit-note" placeholder="Ej. 2 veces por semana">
-          <button id="save-note-btn">Guardar nota</button>
-        </div>
+      <div id="habit-note-storage" hidden>
+        <input type="text" id="habit-note">
+        <button id="save-note-btn">Guardar nota</button>
       </div>
 
       <button id="today-btn">Ir a este mes</button>
@@ -73,9 +70,18 @@
 
       <div id="calendar"></div>
       <button id="back-btn">← Volver a la categoría</button>
+
+      <div id="habit-note-display-container">
+        <div class="note-heading">
+          <span>Nota</span>
+          <button id="edit-note-btn" aria-label="Editar nota" title="Editar nota">✏️</button>
+        </div>
+        <p id="habit-note-display">Sin nota</p>
+      </div>
     </div>
   </div>
 
-  <script type="module" src="script.js?v=20260812-4"></script>
+  <script type="module" src="script.js?v=20260812-5"></script>
+  <script type="module" src="note-ui.js?v=20260812-5"></script>
 </body>
 </html>
