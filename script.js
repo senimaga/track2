@@ -31,6 +31,7 @@ const colorClasses = ["white", "green", "red"];
 const STORAGE_KEY = "habitTrackerData";
 let tasks = [];
 let categories = [];
+let currentCategoryId = null;
 let currentTaskIndex = null;
 let currentDate = new Date();
 let currentUser = null;
@@ -48,13 +49,17 @@ const authMessage = document.getElementById("auth-message");
 const userEmail = document.getElementById("user-email");
 const syncStatus = document.getElementById("sync-status");
 
-const habitsScreen = document.getElementById("habits-screen");
+const categoriesScreen = document.getElementById("categories-screen");
+const categoryScreen = document.getElementById("category-screen");
 const calendarScreen = document.getElementById("calendar-screen");
+const categoryList = document.getElementById("category-list");
+const newCategoryInput = document.getElementById("new-category");
+const addCategoryBtn = document.getElementById("add-category-btn");
+const categoryScreenTitle = document.getElementById("category-screen-title");
+const backCategoriesBtn = document.getElementById("back-categories-btn");
+const taskList = document.getElementById("task-list");
 const addBtn = document.getElementById("add-btn");
 const newTaskInput = document.getElementById("new-task");
-const newTaskCategory = document.getElementById("new-task-category");
-const addCategoryBtn = document.getElementById("add-category-btn");
-const categoriesContainer = document.getElementById("categories-container");
 const calendar = document.getElementById("calendar");
 const calendarTitle = document.getElementById("calendar-title");
 const monthName = document.getElementById("month-name");
@@ -67,36 +72,54 @@ const monthFormatter = new Intl.DateTimeFormat("es-ES", { month: "long", year: "
 
 function getDefaultTasks() {
   return [
-    { name: "Tomarse pastilla", days: {}, categoryId: "uncategorized" },
-    { name: "Lavarse dientes", days: {}, categoryId: "uncategorized" },
-    { name: "Hacer ejercicio", days: {}, categoryId: "uncategorized" }
+    { name: "Tomarse pastilla", days: {} },
+    { name: "Lavarse dientes", days: {} },
+    { name: "Hacer ejercicio", days: {} }
   ];
 }
 
-function getDefaultCategories() {
-  return [{ id: "uncategorized", name: "Sin categoría" }];
+function makeId(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function normalizeData() {
-  if (!Array.isArray(categories) || categories.length === 0) categories = getDefaultCategories();
-  if (!categories.some(c => c.id === "uncategorized")) categories.unshift({ id: "uncategorized", name: "Sin categoría" });
+function migrateStructure() {
+  if (!Array.isArray(tasks)) tasks = [];
+  if (!Array.isArray(categories)) categories = [];
+
+  let legacyCategory = categories.find(c => c.id === "uncategorized") || categories.find(c => c.id === "legacy_all");
+
+  if (!legacyCategory) {
+    legacyCategory = { id: "legacy_all", name: "Mis hábitos" };
+    categories.unshift(legacyCategory);
+  } else {
+    legacyCategory.id = "legacy_all";
+    legacyCategory.name = "Mis hábitos";
+  }
+
   tasks.forEach(task => {
-    if (!task.categoryId || !categories.some(c => c.id === task.categoryId)) task.categoryId = "uncategorized";
+    if (!task.days || typeof task.days !== "object") task.days = {};
+    if (!task.categoryId || task.categoryId === "uncategorized") {
+      task.categoryId = "legacy_all";
+    }
   });
+
+  categories = categories
+    .filter((c, i, arr) => c && c.id && arr.findIndex(x => x.id === c.id) === i)
+    .map(c => c.id === "legacy_all" ? { ...c, name: "Mis hábitos" } : c);
 }
 
 function loadLocalData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { tasks: getDefaultTasks(), categories: getDefaultCategories() };
+    if (!raw) return { tasks: getDefaultTasks(), categories: [] };
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return { tasks: parsed, categories: getDefaultCategories() };
+    if (Array.isArray(parsed)) return { tasks: parsed, categories: [] };
     return {
       tasks: Array.isArray(parsed.tasks) ? parsed.tasks : getDefaultTasks(),
-      categories: Array.isArray(parsed.categories) ? parsed.categories : getDefaultCategories()
+      categories: Array.isArray(parsed.categories) ? parsed.categories : []
     };
   } catch {
-    return { tasks: getDefaultTasks(), categories: getDefaultCategories() };
+    return { tasks: getDefaultTasks(), categories: [] };
   }
 }
 
@@ -104,12 +127,14 @@ function saveLocalData() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks, categories }));
 }
 
-function userDocRef(uid) { return doc(db, "users", uid); }
+function userDocRef(uid) {
+  return doc(db, "users", uid);
+}
 
 async function saveData() {
-  normalizeData();
+  migrateStructure();
   saveLocalData();
-  renderHome();
+  renderCurrentView();
 
   if (!currentUser || isApplyingRemoteData) return;
 
@@ -131,17 +156,18 @@ async function initializeUserData(user) {
     const local = loadLocalData();
     tasks = local.tasks;
     categories = local.categories;
-    normalizeData();
+    migrateStructure();
     await setDoc(ref, { tasks, categories, updatedAt: Date.now() }, { merge: true });
   } else {
     const data = snapshot.data();
     tasks = data.tasks;
-    categories = Array.isArray(data.categories) ? data.categories : getDefaultCategories();
-    normalizeData();
+    categories = Array.isArray(data.categories) ? data.categories : [];
+    migrateStructure();
     saveLocalData();
+    await setDoc(ref, { tasks, categories, updatedAt: Date.now() }, { merge: true });
   }
 
-  renderHome();
+  showCategories();
 
   if (unsubscribeData) unsubscribeData();
   unsubscribeData = onSnapshot(ref, (liveSnapshot) => {
@@ -150,14 +176,10 @@ async function initializeUserData(user) {
 
     isApplyingRemoteData = true;
     tasks = data.tasks;
-    categories = Array.isArray(data.categories) ? data.categories : getDefaultCategories();
-    normalizeData();
+    categories = Array.isArray(data.categories) ? data.categories : [];
+    migrateStructure();
     saveLocalData();
-    renderHome();
-    if (currentTaskIndex !== null && tasks[currentTaskIndex]) {
-      calendarTitle.textContent = tasks[currentTaskIndex].name;
-      renderCalendar();
-    }
+    renderCurrentView();
     syncStatus.textContent = "☁️ Sincronizado";
     isApplyingRemoteData = false;
   }, (error) => {
@@ -175,7 +197,7 @@ function showAuthError(error) {
     "auth/operation-not-allowed": "Activa Email/Password en Firebase Authentication.",
     "permission-denied": "Revisa las reglas de seguridad de Firestore."
   };
-  authMessage.textContent = messages[error?.code || ""] || "Ha ocurrido un error. Revisa Firebase y vuelve a intentarlo.";
+  authMessage.textContent = messages[error?.code || ""] || "Ha ocurrido un error. Vuelve a intentarlo.";
 }
 
 loginBtn.addEventListener("click", async () => {
@@ -213,156 +235,185 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-function renderHome() {
-  normalizeData();
-  renderCategorySelect();
+function hideAllScreens() {
+  categoriesScreen.style.display = "none";
+  categoryScreen.style.display = "none";
+  calendarScreen.style.display = "none";
+}
+
+function showCategories() {
+  currentCategoryId = null;
+  currentTaskIndex = null;
+  hideAllScreens();
+  categoriesScreen.style.display = "block";
   renderCategories();
 }
 
-function renderCategorySelect() {
-  const previous = newTaskCategory.value;
-  newTaskCategory.innerHTML = "";
-  categories.forEach(category => {
-    const option = document.createElement("option");
-    option.value = category.id;
-    option.textContent = category.name;
-    newTaskCategory.appendChild(option);
-  });
-  if (categories.some(c => c.id === previous)) newTaskCategory.value = previous;
+function showCategory(categoryId) {
+  currentCategoryId = categoryId;
+  currentTaskIndex = null;
+  hideAllScreens();
+  categoryScreen.style.display = "block";
+  renderCategory();
+}
+
+function renderCurrentView() {
+  if (calendarScreen.style.display !== "none" && currentTaskIndex !== null) {
+    if (tasks[currentTaskIndex]) {
+      calendarTitle.textContent = tasks[currentTaskIndex].name;
+      renderCalendar();
+    }
+    return;
+  }
+  if (categoryScreen.style.display !== "none" && currentCategoryId) {
+    renderCategory();
+    return;
+  }
+  renderCategories();
 }
 
 function renderCategories() {
-  categoriesContainer.innerHTML = "";
+  categoryList.innerHTML = "";
 
   categories.forEach(category => {
-    const block = document.createElement("section");
-    block.classList.add("category-block");
+    const row = document.createElement("div");
+    row.classList.add("category-row");
 
-    const header = document.createElement("div");
-    header.classList.add("category-header");
+    const main = document.createElement("button");
+    main.classList.add("category-main-btn");
+    const count = tasks.filter(t => t.categoryId === category.id).length;
+    main.innerHTML = `<span>${escapeHtml(category.name)}</span><small>${count} ${count === 1 ? "hábito" : "hábitos"}</small>`;
+    main.addEventListener("click", () => showCategory(category.id));
 
-    const title = document.createElement("div");
-    title.classList.add("category-title");
-    title.textContent = category.name;
+    const edit = document.createElement("button");
+    edit.classList.add("category-mini-btn");
+    edit.textContent = "✏️";
+    edit.addEventListener("click", () => {
+      const value = prompt("Nombre de la categoría:", category.name);
+      if (value && value.trim()) {
+        category.name = value.trim();
+        saveData();
+      }
+    });
 
-    const actions = document.createElement("div");
-    actions.classList.add("category-actions");
-
-    if (category.id !== "uncategorized") {
-      const editCategoryBtn = document.createElement("button");
-      editCategoryBtn.classList.add("category-action-btn");
-      editCategoryBtn.textContent = "✏️";
-      editCategoryBtn.title = "Renombrar categoría";
-      editCategoryBtn.addEventListener("click", () => {
-        const name = prompt("Nombre de la categoría:", category.name);
-        if (name && name.trim()) { category.name = name.trim(); saveData(); }
-      });
-
-      const deleteCategoryBtn = document.createElement("button");
-      deleteCategoryBtn.classList.add("category-action-btn");
-      deleteCategoryBtn.textContent = "🗑️";
-      deleteCategoryBtn.title = "Eliminar categoría";
-      deleteCategoryBtn.addEventListener("click", () => {
-        if (!confirm(`¿Eliminar la categoría "${category.name}"? Los hábitos pasarán a "Sin categoría".`)) return;
-        tasks.forEach(task => { if (task.categoryId === category.id) task.categoryId = "uncategorized"; });
+    const del = document.createElement("button");
+    del.classList.add("category-mini-btn", "danger-soft");
+    del.textContent = "🗑️";
+    del.disabled = categories.length === 1;
+    del.addEventListener("click", () => {
+      const categoryTasks = tasks.filter(t => t.categoryId === category.id);
+      if (categoryTasks.length > 0) {
+        alert("Esta categoría tiene hábitos. Muévelos primero a otra categoría para no perder nada.");
+        return;
+      }
+      if (confirm(`¿Eliminar la categoría "${category.name}"?`)) {
         categories = categories.filter(c => c.id !== category.id);
         saveData();
-      });
+      }
+    });
 
-      actions.append(editCategoryBtn, deleteCategoryBtn);
-    }
-
-    header.append(title, actions);
-    block.appendChild(header);
-
-    const list = document.createElement("ul");
-    list.classList.add("category-list");
-
-    const taskIndices = tasks.map((task, index) => ({ task, index })).filter(item => item.task.categoryId === category.id);
-
-    if (taskIndices.length === 0) {
-      const empty = document.createElement("div");
-      empty.classList.add("empty-category");
-      empty.textContent = "No hay hábitos en esta categoría";
-      block.appendChild(empty);
-    } else {
-      taskIndices.forEach((item, position) => list.appendChild(createTaskRow(item.task, item.index, taskIndices, position)));
-      block.appendChild(list);
-    }
-
-    categoriesContainer.appendChild(block);
+    row.append(main, edit, del);
+    categoryList.appendChild(row);
   });
 }
 
-function createTaskRow(task, index, categoryTasks, position) {
-  const li = document.createElement("li");
+function renderCategory() {
+  const category = categories.find(c => c.id === currentCategoryId);
+  if (!category) {
+    showCategories();
+    return;
+  }
 
-  const moveControls = document.createElement("div");
-  moveControls.classList.add("move-controls");
-  const up = document.createElement("button");
-  const down = document.createElement("button");
-  up.textContent = "▲"; down.textContent = "▼";
-  up.classList.add("move-btn"); down.classList.add("move-btn");
-  up.disabled = position === 0;
-  down.disabled = position === categoryTasks.length - 1;
-  up.addEventListener("click", () => moveTaskWithinCategory(categoryTasks[position].index, categoryTasks[position - 1]?.index));
-  down.addEventListener("click", () => moveTaskWithinCategory(categoryTasks[position].index, categoryTasks[position + 1]?.index));
-  moveControls.append(up, down);
+  categoryScreenTitle.textContent = category.name;
+  taskList.innerHTML = "";
 
-  const btn = document.createElement("button");
-  btn.classList.add("task-btn");
-  btn.textContent = task.name;
-  btn.addEventListener("click", () => showCalendar(index));
+  const indices = tasks.map((task, index) => ({ task, index })).filter(x => x.task.categoryId === currentCategoryId);
 
-  const categoryBtn = document.createElement("button");
-  categoryBtn.textContent = "📁";
-  categoryBtn.classList.add("category-move-btn");
-  categoryBtn.title = "Mover a otra categoría";
-  categoryBtn.addEventListener("click", () => moveTaskToCategory(task));
+  if (indices.length === 0) {
+    const empty = document.createElement("p");
+    empty.classList.add("empty-state");
+    empty.textContent = "Todavía no hay hábitos en esta categoría.";
+    taskList.appendChild(empty);
+    return;
+  }
 
-  const editBtn = document.createElement("button");
-  editBtn.textContent = "✏️";
-  editBtn.classList.add("edit-btn");
-  editBtn.addEventListener("click", () => {
-    const newName = prompt("Editar hábito:", task.name);
-    if (newName && newName.trim()) { task.name = newName.trim(); saveData(); }
+  indices.forEach((item, position) => {
+    const li = document.createElement("li");
+
+    const moveControls = document.createElement("div");
+    moveControls.classList.add("move-controls");
+    const up = document.createElement("button");
+    const down = document.createElement("button");
+    up.textContent = "▲";
+    down.textContent = "▼";
+    up.classList.add("move-btn");
+    down.classList.add("move-btn");
+    up.disabled = position === 0;
+    down.disabled = position === indices.length - 1;
+    up.addEventListener("click", () => swapTasks(item.index, indices[position - 1]?.index));
+    down.addEventListener("click", () => swapTasks(item.index, indices[position + 1]?.index));
+    moveControls.append(up, down);
+
+    const main = document.createElement("button");
+    main.classList.add("task-btn");
+    main.textContent = item.task.name;
+    main.addEventListener("click", () => showCalendar(item.index));
+
+    const moveCategory = document.createElement("button");
+    moveCategory.classList.add("category-move-btn");
+    moveCategory.textContent = "📁";
+    moveCategory.title = "Mover a otra categoría";
+    moveCategory.addEventListener("click", () => moveTaskToAnotherCategory(item.task));
+
+    const edit = document.createElement("button");
+    edit.classList.add("edit-btn");
+    edit.textContent = "✏️";
+    edit.addEventListener("click", () => {
+      const value = prompt("Editar hábito:", item.task.name);
+      if (value && value.trim()) {
+        item.task.name = value.trim();
+        saveData();
+      }
+    });
+
+    const del = document.createElement("button");
+    del.classList.add("delete-btn");
+    del.textContent = "🗑️";
+    del.addEventListener("click", () => {
+      if (confirm(`¿Eliminar hábito "${item.task.name}"? También se eliminará su historial.`)) {
+        tasks.splice(item.index, 1);
+        saveData();
+      }
+    });
+
+    li.append(moveControls, main, moveCategory, edit, del);
+    taskList.appendChild(li);
   });
-
-  const deleteBtn = document.createElement("button");
-  deleteBtn.textContent = "🗑️";
-  deleteBtn.classList.add("delete-btn");
-  deleteBtn.addEventListener("click", () => {
-    if (confirm(`¿Eliminar hábito "${task.name}"?`)) { tasks.splice(index, 1); saveData(); }
-  });
-
-  li.append(moveControls, btn, categoryBtn, editBtn, deleteBtn);
-  return li;
 }
 
-function moveTaskWithinCategory(fromIndex, toIndex) {
-  if (toIndex === undefined || toIndex < 0 || toIndex >= tasks.length) return;
-  const [task] = tasks.splice(fromIndex, 1);
-  tasks.splice(toIndex, 0, task);
+function swapTasks(a, b) {
+  if (a === undefined || b === undefined) return;
+  [tasks[a], tasks[b]] = [tasks[b], tasks[a]];
   saveData();
 }
 
-function moveTaskToCategory(task) {
-  const choices = categories.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
-  const currentIndex = categories.findIndex(c => c.id === task.categoryId);
-  const answer = prompt(`Mover "${task.name}" a:\n\n${choices}\n\nEscribe el número:`, String(currentIndex + 1));
-  const selected = Number(answer) - 1;
-  if (Number.isInteger(selected) && categories[selected]) {
-    task.categoryId = categories[selected].id;
+function moveTaskToAnotherCategory(task) {
+  if (categories.length < 2) {
+    alert("Crea otra categoría primero.");
+    return;
+  }
+  const options = categories.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
+  const answer = prompt(`Mover "${task.name}" a:\n\n${options}\n\nEscribe el número:`);
+  const idx = Number(answer) - 1;
+  if (Number.isInteger(idx) && categories[idx]) {
+    task.categoryId = categories[idx].id;
     saveData();
   }
 }
 
-addCategoryBtn.addEventListener("click", () => {
-  const name = prompt("Nombre de la nueva categoría:");
-  if (!name || !name.trim()) return;
-  categories.push({ id: `cat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name: name.trim() });
-  saveData();
-});
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
 
 function dateKey(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -386,7 +437,7 @@ function showCalendar(taskIndex) {
   const task = tasks[taskIndex];
   migrateLegacyFebruaryData(task);
   saveData();
-  habitsScreen.style.display = "none";
+  hideAllScreens();
   calendarScreen.style.display = "block";
   calendarTitle.textContent = task.name;
   renderCalendar();
@@ -398,12 +449,14 @@ function renderCalendar() {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+
   monthName.textContent = monthFormatter.format(currentDate).replace(/^./, c => c.toUpperCase());
   calendar.innerHTML = "";
+
   const firstDay = (new Date(year, month, 1).getDay() + 6) % 7;
   for (let i = 0; i < firstDay; i++) calendar.appendChild(document.createElement("div"));
-  const today = new Date();
 
+  const today = new Date();
   for (let day = 1; day <= daysInMonth; day++) {
     const dayDiv = document.createElement("div");
     dayDiv.classList.add("day");
@@ -411,7 +464,11 @@ function renderCalendar() {
     const color = task.days[key] || "white";
     dayDiv.classList.add(color);
     dayDiv.textContent = day;
-    if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) dayDiv.classList.add("today");
+
+    if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+      dayDiv.classList.add("today");
+    }
+
     dayDiv.addEventListener("click", () => {
       const currentColor = colorClasses.find(c => dayDiv.classList.contains(c)) || "white";
       const nextColor = colorClasses[(colorClasses.indexOf(currentColor) + 1) % colorClasses.length];
@@ -420,22 +477,35 @@ function renderCalendar() {
       task.days[key] = nextColor;
       saveData();
     });
+
     calendar.appendChild(dayDiv);
   }
 }
 
-prevMonthBtn.addEventListener("click", () => { currentDate.setMonth(currentDate.getMonth() - 1); renderCalendar(); });
-nextMonthBtn.addEventListener("click", () => { currentDate.setMonth(currentDate.getMonth() + 1); renderCalendar(); });
-todayBtn.addEventListener("click", () => { currentDate = new Date(); currentDate.setDate(1); renderCalendar(); });
-backBtn.addEventListener("click", () => { calendarScreen.style.display = "none"; habitsScreen.style.display = "block"; currentTaskIndex = null; });
+addCategoryBtn.addEventListener("click", addCategory);
+newCategoryInput.addEventListener("keydown", e => { if (e.key === "Enter") addCategory(); });
+
+function addCategory() {
+  const name = newCategoryInput.value.trim();
+  if (!name) return;
+  categories.push({ id: makeId("cat"), name });
+  newCategoryInput.value = "";
+  saveData();
+}
 
 addBtn.addEventListener("click", addTask);
-newTaskInput.addEventListener("keydown", event => { if (event.key === "Enter") addTask(); });
+newTaskInput.addEventListener("keydown", e => { if (e.key === "Enter") addTask(); });
 
 function addTask() {
   const name = newTaskInput.value.trim();
-  if (!name) return;
-  tasks.push({ name, days: {}, categoryId: newTaskCategory.value || "uncategorized" });
+  if (!name || !currentCategoryId) return;
+  tasks.push({ name, days: {}, categoryId: currentCategoryId });
   newTaskInput.value = "";
   saveData();
 }
+
+backCategoriesBtn.addEventListener("click", showCategories);
+backBtn.addEventListener("click", () => showCategory(currentCategoryId));
+prevMonthBtn.addEventListener("click", () => { currentDate.setMonth(currentDate.getMonth() - 1); renderCalendar(); });
+nextMonthBtn.addEventListener("click", () => { currentDate.setMonth(currentDate.getMonth() + 1); renderCalendar(); });
+todayBtn.addEventListener("click", () => { currentDate = new Date(); currentDate.setDate(1); renderCalendar(); });
