@@ -89,15 +89,18 @@ function makeId(prefix) {
 }
 
 // Organiza los hábitos existentes sin tocar sus nombres ni borrar ningún día.
+// Una vez creada, la categoría inicial es una categoría normal y puede renombrarse libremente.
 function prepareCategoryStructure() {
   if (!Array.isArray(tasks)) tasks = [];
   if (!Array.isArray(categories)) categories = [];
 
-  // Compatibilidad con la primera prueba de categorías.
   const oldUncategorized = categories.find(category => category?.id === "uncategorized");
   if (oldUncategorized) {
+    const previousName = oldUncategorized.name;
     oldUncategorized.id = DEFAULT_CATEGORY_ID;
-    oldUncategorized.name = "Mis hábitos";
+    if (!previousName || previousName === "Sin categoría") {
+      oldUncategorized.name = "Mis hábitos";
+    }
     tasks.forEach(task => {
       if (task?.categoryId === "uncategorized") task.categoryId = DEFAULT_CATEGORY_ID;
     });
@@ -166,11 +169,7 @@ async function saveData() {
   try {
     await setDoc(
       userDocRef(currentUser.uid),
-      {
-        tasks,
-        categories,
-        updatedAt: Date.now()
-      },
+      { tasks, categories, updatedAt: Date.now() },
       { merge: true }
     );
     syncStatus.textContent = "☁️ Sincronizado";
@@ -189,8 +188,6 @@ async function initializeUserData(user) {
     snapshot = await getDoc(ref);
   } catch (error) {
     console.error("Error leyendo Firestore:", error);
-
-    // Se muestra la copia local, pero se bloquean escrituras en nube para no sustituir datos remotos a ciegas.
     const local = loadLocalData();
     tasks = local.tasks;
     categories = local.categories;
@@ -202,17 +199,23 @@ async function initializeUserData(user) {
   }
 
   if (snapshot.exists() && Array.isArray(snapshot.data()?.tasks)) {
-    // IMPORTANTE: la copia de Firebase es la fuente de verdad.
     const data = snapshot.data();
     tasks = data.tasks;
-    categories = Array.isArray(data.categories) ? data.categories : [];
+
+    // Si Firebase todavía no tiene categorías, conserva las locales en vez de resetearlas.
+    if (Array.isArray(data.categories)) {
+      categories = data.categories;
+    } else {
+      const local = loadLocalData();
+      categories = Array.isArray(local.categories) ? local.categories : [];
+    }
+
     prepareCategoryStructure();
     saveLocalData();
     cloudReady = true;
     showCategories();
     syncStatus.textContent = "☁️ Datos cargados";
   } else {
-    // Solo se usa localStorage cuando la cuenta todavía no tiene un array tasks en Firebase.
     const local = loadLocalData();
     tasks = local.tasks;
     categories = local.categories;
@@ -220,11 +223,7 @@ async function initializeUserData(user) {
     saveLocalData();
 
     try {
-      await setDoc(
-        ref,
-        { tasks, categories, updatedAt: Date.now() },
-        { merge: true }
-      );
+      await setDoc(ref, { tasks, categories, updatedAt: Date.now() }, { merge: true });
       cloudReady = true;
       syncStatus.textContent = "☁️ Sincronizado";
     } catch (error) {
@@ -246,7 +245,12 @@ async function initializeUserData(user) {
 
       isApplyingRemoteData = true;
       tasks = data.tasks;
-      categories = Array.isArray(data.categories) ? data.categories : [];
+
+      // No borres/reescribas las categorías locales si el documento remoto aún no tiene ese campo.
+      if (Array.isArray(data.categories)) {
+        categories = data.categories;
+      }
+
       prepareCategoryStructure();
       saveLocalData();
       renderCurrentView();
@@ -375,12 +379,12 @@ function renderCategories() {
     edit.classList.add("category-mini-btn");
     edit.textContent = "✏️";
     edit.title = "Renombrar categoría";
-    edit.addEventListener("click", () => {
+    edit.addEventListener("click", async () => {
       const value = prompt("Nombre de la categoría:", category.name);
-      if (value && value.trim()) {
-        category.name = value.trim();
-        saveData();
-      }
+      if (!value || !value.trim()) return;
+
+      category.name = value.trim();
+      await saveData();
     });
 
     const del = document.createElement("button");
@@ -507,10 +511,7 @@ function moveTaskToAnotherCategory(task) {
     .map((category, index) => `${index + 1}. ${category.name}`)
     .join("\n");
 
-  const answer = prompt(
-    `Mover "${task.name}" a:\n\n${options}\n\nEscribe el número:`
-  );
-
+  const answer = prompt(`Mover "${task.name}" a:\n\n${options}\n\nEscribe el número:`);
   if (answer === null) return;
 
   const selectedIndex = Number(answer) - 1;
@@ -533,7 +534,6 @@ function dateKey(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-// Conserva el formato antiguo y copia a claves YYYY-MM-DD solo si hace falta.
 function migrateLegacyFebruaryData(task) {
   if (!task?.days || task._legacyMigrated) return;
 
@@ -618,11 +618,7 @@ function addCategory() {
   const name = newCategoryInput.value.trim();
   if (!name) return;
 
-  categories.push({
-    id: makeId("cat"),
-    name
-  });
-
+  categories.push({ id: makeId("cat"), name });
   newCategoryInput.value = "";
   saveData();
 }
@@ -631,12 +627,7 @@ function addTask() {
   const name = newTaskInput.value.trim();
   if (!name || !currentCategoryId) return;
 
-  tasks.push({
-    name,
-    days: {},
-    categoryId: currentCategoryId
-  });
-
+  tasks.push({ name, days: {}, categoryId: currentCategoryId });
   newTaskInput.value = "";
   saveData();
 }
