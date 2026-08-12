@@ -65,9 +65,9 @@ input { font-family:inherit; }
 .today { outline:3px solid #8fc1a9; outline-offset:2px; }
 #back-btn { margin-top:8px; padding:10px 20px; background:#8fc1a9; color:white; }
 
-#habit-note-display-container { max-width:960px; margin:14px auto 0; min-height:52px; padding:0 12px 0 28px; background:rgba(255,255,255,.58); display:flex; align-items:center; justify-content:space-between; gap:16px; text-align:left; }
-#habit-note-display { margin:0; flex:1; font-size:20px; line-height:1.35; color:#555; white-space:pre-wrap; }
-#edit-note-btn { width:42px; height:42px; padding:0; background:transparent; font-size:28px; line-height:1; flex:0 0 auto; }
+#habit-note-display-container { width:410px; max-width:100%; margin:14px auto 0; min-height:46px; padding:0 10px 0 16px; background:rgba(255,255,255,.58); display:flex; align-items:center; justify-content:space-between; gap:12px; text-align:left; }
+#habit-note-display { margin:0; flex:1; font-size:16px; line-height:1.35; color:#555; white-space:pre-wrap; }
+#edit-note-btn { width:36px; height:36px; padding:0; background:transparent; font-size:23px; line-height:1; flex:0 0 auto; }
 
 @media (max-width:480px) {
   body { padding:14px 8px; }
@@ -86,7 +86,7 @@ input { font-family:inherit; }
   #calendar { grid-auto-rows:40px; }
   #week-days div { height:30px; }
   .day { width:40px; height:40px; font-size:14px; }
-  #habit-note-display-container { max-width:100%; min-height:48px; padding:0 10px 0 16px; }
-  #habit-note-display { font-size:16px; }
-  #edit-note-btn { width:36px; height:36px; font-size:24px; }
+  #habit-note-display-container { width:316px; max-width:100%; min-height:44px; padding:0 8px 0 14px; }
+  #habit-note-display { font-size:15px; }
+  #edit-note-btn { width:34px; height:34px; font-size:22px; }
 }
