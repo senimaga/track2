@@ -52,6 +52,13 @@ input { font-family:inherit; }
 .category-move-btn { background:#b5a98f; }
 .empty-state { color:#999; margin-top:24px; }
 
+#habit-note-container { max-width:430px; margin:12px auto 10px; text-align:left; }
+#habit-note-container label { display:block; margin-bottom:6px; font-size:14px; font-weight:600; color:#666; }
+.habit-note-row { display:flex; gap:7px; }
+#habit-note { flex:1; min-width:0; padding:9px 11px; font-size:14px; border:1px solid #d8cec7; border-radius:9px; background:white; }
+#save-note-btn { padding:9px 12px; background:#efe8e3; color:#5d514a; border:1px solid #ddd2cb; white-space:nowrap; }
+#save-note-btn:hover { background:#e4d9d1; }
+
 #month-navigation { display:flex; align-items:center; justify-content:center; gap:14px; margin:8px 0 6px; }
 .month-btn { width:38px; height:38px; border-radius:50%; font-size:28px; line-height:1; background:white; color:#555; border:1px solid #ddd; }
 #today-btn { padding:7px 12px; margin:8px 0 10px; background:transparent; color:#668f7c; border:1px solid #8fc1a9; }
@@ -78,6 +85,8 @@ input { font-family:inherit; }
   #task-list li { gap:4px; }
   .task-btn { width:170px; min-width:170px; }
   .edit-btn,.delete-btn,.category-move-btn { width:36px; height:36px; font-size:16px; }
+  .habit-note-row { flex-direction:column; }
+  #save-note-btn { width:100%; }
   #week-days,#calendar { grid-template-columns:repeat(7,40px); gap:6px; }
   #calendar { grid-auto-rows:40px; }
   #week-days div { height:30px; }
