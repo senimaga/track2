@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#fdf6f0">
   <title>Mi Tracker de Hábitos</title>
-  <link rel="stylesheet" href="style.css?v=20260811-4">
+  <link rel="stylesheet" href="style.css?v=20260812-1">
 </head>
 <body>
   <div id="auth-screen" class="auth-card">
@@ -32,11 +32,18 @@
 
     <div id="habits-screen">
       <h1>📝 Mis Hábitos</h1>
+
+      <div id="category-toolbar">
+        <button id="add-category-btn">+ Categoría</button>
+      </div>
+
       <div id="add-task-container">
         <input type="text" id="new-task" placeholder="Nuevo hábito">
+        <select id="new-task-category" aria-label="Categoría del nuevo hábito"></select>
         <button id="add-btn">Añadir</button>
       </div>
-      <ul id="task-list"></ul>
+
+      <div id="categories-container"></div>
     </div>
 
     <div id="calendar-screen" style="display:none;">
@@ -64,6 +71,6 @@
     </div>
   </div>
 
-  <script type="module" src="script.js?v=20260811-4"></script>
+  <script type="module" src="script.js?v=20260812-1"></script>
 </body>
 </html>
